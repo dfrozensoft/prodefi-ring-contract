@@ -1,0 +1,8 @@
+build/
+node_modules
+yarn-error.log
+coverage
+coverage.json
+allFiredEvents
+
+

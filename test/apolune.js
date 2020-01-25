@@ -1,0 +1,149 @@
+
+const fs = require('fs');
+const path = require('path');
+const shellescape = require('shell-escape');
+const { execSync } = require('child_process');
+const tmp = require("tmp");
+var JSONBigInt = require('json-bigint-string');
+
+const Mixer = artifacts.require("./Mixer.sol");
+
+// Implements functionality similar to the 'which' command
+function which (name, defaultPath) {
+    var X;
+    try {
+        X = execSync("/usr/bin/which " + name).toString();
+    }
+    catch (err) {
+        return defaultPath;
+    }
+    return X.trim("\n");
+}
+
+// Filesystem path of the 'aploune' tool
+const defaultAplouneBinPath = "/home/user/go/src/github.com/prodefi/aploune/aploune";
+function findAploune () {
+    var foundWithWhich = which("aploune", defaultAplouneBinPath);
+    if( ! foundWithWhich || ! fs.existsSync(foundWithWhich) ) {
+        return null;
+    }
+    return foundWithWhich;
+}
+
+// Execute `aploune` command, with array of arguments
+const aplounePath = findAploune();
+function aploune (args) {
+    return execSync(shellescape([aplounePath].concat(args))).toString().trim("\n");
+}
+
+// Only run these integration tests when the `aploune` tool is present
+if( aplounePath ) {
+    async function writeToTemp(data) {
+        var tmp_file = tmp.fileSync();
+        await new Promise((resolve, reject) => {
+            fs.write(tmp_file.fd, JSON.stringify(data), (err) => {
+                if( err )
+                    reject(err);
+                else {
+                    resolve();
+                }
+            });
+        });
+        return tmp_file;
+    }
+
+    contract('Mixer', (accounts) => {
+        it('Integrates with Aploune', async () => {
+            // Generate 4 keys
+            const keys_txt = aploune(['generate', '-n', '4']);
+            const keys = JSONBigInt.parse(keys_txt);
+            var keys_file = await writeToTemp(keys);
+
+            // Deposit 1 Wei into mixer
+            const txValue = 1;
+            const owner = accounts[0];
+            const token = 0;            // 0 = ether
+            const txObj = { from: owner, value: txValue };
+            const logDepositEvent = 'LogMixerDeposit';
+            const logReadyEvent = 'LogMixerReady';
+            const logDeadEvent = 'LogMixerDead';
+
+            let instance = await Mixer.deployed();
+            const initialBalance = web3.eth.getBalance(instance.address);
+
+            // For each key in inputs, deposit into the Ring
+            var ring_msg = null;
+            var ring_guid = null;
+            var k = 0;
+            for( var j in keys.pubkeys ) {
+                const pubkey = keys.pubkeys[j];
+                k++;
+
+                let result = await instance.depositEther(token, txValue, pubkey.x, pubkey.y, txObj);
+                assert.ok(result.receipt.status, "Bad deposit status");
+
+                const depositEvent = result.logs.find(el => (el.event === logDepositEvent));
+                ring_guid = depositEvent.args.ring_id.toString();
+
+                const readyEvent = result.logs.find(el => (el.event === logReadyEvent));
+                if( readyEvent ) {
+                    ring_msg = readyEvent.args.message.toString().substr(2);
+                }
+            }
+
+            // Contract balance should have increased to equal the N deposits
+            const contractBalance = web3.eth.getBalance(instance.address);
+            assert.equal(contractBalance.toString(), initialBalance.add(txValue * k).toString());
+
+            // Generate inputs from ring keys
+            const inputs_txt = aploune(['inputs', '-f', keys_file.name, '-n', '4', '-m', ring_msg]);
+            const inputs = JSON.parse(inputs_txt);
+
+            // Verify signatures validate in aploune tool
+            var inputs_file = await writeToTemp(inputs);
+            const inputs_verified = aploune(['verify', '-f', inputs_file.name, '-m', ring_msg]);
+            assert.equal(inputs_verified, "Signatures verified", "Aploune could not verify signatures");
+
+            // Then perform all the withdraws
+            var result = null;
+            var total_gas = 0;
+            var i = 0;
+            for( var k in inputs.signatures ) {
+                i++;
+
+                // Verify the withdraw signature works
+                const sig = inputs.signatures[k];
+                const tau = sig.tau;
+                const ctlist = sig.ctlist;
+                result = await instance.withdrawEther(ring_guid, tau.x, tau.y, ctlist);
+                assert.ok(result.receipt.status, "Bad withdraw status");
+                total_gas += result.receipt.gasUsed;
+
+                // Verify same signature can't withdraw twice
+                var ok = false;
+                await instance.withdrawEther(ring_guid, tau.x, tau.y, ctlist).catch(function(err) {
+                    assert.include(err.message, 'revert', 'Withdraw twice should fail');
+                    ok = true;
+                });
+                if( ! ok )
+                    assert.fail("Duplicate withdraw didn't fail!");
+            }
+
+            console.log("\tAverage Gas per Withdraw: " + (total_gas / i));
+
+            // Verify the Ring is dead
+            const expectedMixerDead = result.logs.some(el => (el.event === logDeadEvent));
+            assert.ok(expectedMixerDead, "Last Withdraw should emit MixerDead event");
+
+            const deadEvent = result.logs.find(el => (el.event === logDeadEvent));
+            assert.equal(deadEvent.args.ring_id.toString(), ring_guid, "Ring GUID batch doesn't match in MixerDead");
+
+            // And that all money has been withdrawn
+            const finishBalance = web3.eth.getBalance(instance.address);
+            assert.equal(finishBalance.toString(), initialBalance.toString(), "Finish balance should be same as initial balance");
+
+            inputs_file.removeCallback();
+            keys_file.removeCallback();
+        });
+    });
+}

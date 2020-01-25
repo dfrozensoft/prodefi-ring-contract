@@ -39,7 +39,7 @@ The lifecycle and state of the Mixer and Rings is monitored using the following 
  * `LogMixerWithdraw` - Tokens have been withdrawn from a Ring, includes: Ring GUID, Tag, Token, Value
  * `LogMixerDead` - All tokens have been withdrawn from a Ring, includes: Ring GUID
 
-The [Orbital](https://github.com/clearmatics/orbital) tool can be used to create the necessary keys and to create and verify compatible ring signatures, for details see the [Orbital Integration Tests](test/orbital.js).
+The [Aploune](https://github.com/Prodefi/aploune) tool can be used to create the necessary keys and to create and verify compatible ring signatures, for details see the [Aploune Integration Tests](test/aploune.js).
 
 
 ## Caveats
@@ -83,14 +83,14 @@ Start `testrpc` in a separate terminal tab or window.
 This will compile the contract, deploy to the Ganache instance and run the tests. 
 
 
-#### Testing with Orbital
+#### Testing with Aploune
 
-The [Orbital][6] tool is needed to generate the signatures and random keys for some of the tests. If `orbital` is in `$PATH` the `yarn test` command will run additional tests which verify the functionality of the Mixer contract using randomly generated keys instead of the fixed test cases.
+The [Aploune][6] tool is needed to generate the signatures and random keys for some of the tests. If `aploune` is in `$PATH` the `yarn test` command will run additional tests which verify the functionality of the Mixer contract using randomly generated keys instead of the fixed test cases.
 
 [1]: https://prodefi.io/whitepaper/prodefi-ring-contract.pdf
 [2]: http://truffleframework.com/
 [3]: https://nodejs.org/
 [4]: https://yarnpkg.com/en/docs/install
 [5]: https://docs.npmjs.com/getting-started/installing-node
-[6]: https://github.com/clearmatics/orbital
+[6]: https://github.com/Prodefi/aploune
 [7]: https://www.npmjs.com/package/solidity-coverage

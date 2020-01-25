@@ -1,0 +1,22 @@
+{
+  "name": "prodefi-truffle",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/Prodefi/prodefi-ring-contract.git",
+  "author": "raj@prodefi.io",
+  "license": "LGPL-3.0+",
+  "dependencies": {
+    "big-integer": "1.6.48",
+    "ganache-cli": "6.7.0",
+    "json-bigint-string": "^1.0.0",
+    "shell-escape": "^0.2.0",
+    "solidity-coverage": "0.5.11",
+    "tmp": "0.1.0",
+    "truffle": "4.1.16"
+  },
+  "scripts": {
+    "testrpc": "ganache-cli --gasLimit 0xFFFFFFF",
+    "test": "truffle test",
+    "coverage": "solidity-coverage"
+  }
+}
